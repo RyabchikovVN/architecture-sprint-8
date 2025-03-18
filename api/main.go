@@ -51,7 +51,7 @@ func reportsHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, "Token ERROR!")
+		fmt.Fprint(w, "Token ERROR! " + err.Error())
 		return
 	}
 
