@@ -1,13 +1,45 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strings"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 )
+
+type Realm struct {
+	PublicKey string `json:"public_key"`
+}
+
+var publicKey []byte
+var realmPK string
+
+func initRSAPublicKey() {
+	resp, err := http.Get("http://keycloak:8080/realms/reports-realm")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	var realm Realm
+	err = json.Unmarshal(body, &realm)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	realmPK = "\n-----BEGIN PUBLIC KEY-----\n" + realm.PublicKey + "\n-----END PUBLIC KEY-----\n"
+	publicKey = []byte("\n-----BEGIN PUBLIC KEY-----\n" + realm.PublicKey + "\n-----END PUBLIC KEY-----\n")
+}
 
 // CORSMiddleware добавляет необходимые заголовки для поддержки CORS
 func CORSMiddleware(next http.Handler) http.Handler {
@@ -32,16 +64,18 @@ func main() {
 	http.ListenAndServe(":8000", CORSMiddleware(r))
 }
 
-var publicKey = []byte("\n-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1mxs5cw/bOGQ+PHLFeIwDAUzGhKLDYbNJaqoHjvV/GUCAp/1FF/TDIiEN2fuLLeAgpPZKZSEG+bxXJ7vXXxSNvUjY1etmRvHbhlMN+rJYTQtWLZxsvM/MfYi0b+l20oeGtCBwUa2CKWFssnxBM5L3Ex7bmTKzetivOrFP25ztCd6Bu5RXaZ/KJgJlFoHqw8GkGp6iMb1bXcyOSlndJWYprHfa5XjbBsNmXwZ6y8AM3V8Qb+dzDeA60qmX5RlWQOp80W50QKh7BOBud0JuLewZE4JKiWUsM5Csisc/XZbYQSpWZTgGduqi1taYDOZHSPA/yJUtIqdXiyCwo5P0oIqKwIDAQAB\n-----END PUBLIC KEY-----\n")
+//var publicKey = []byte("\n-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzEd0L5pqlOVLuyrfWOVDmqn4MvsX8jn+k2Ea/Tsi7xxYysGQaCAvGa3TMdzTw69knyg9VUJTxPSxp2kJ4BRm5jVgEQb6v+44P2gcaEUjPpBgDyGYa2wHuZntjEbl63rF0lJjpjFO2HMw6wh4cOlQjHHnLAKBqw7TD3bXDDUWY2A16viB54vdeLXT+QqvaRBm4pZFRIwIg0V+SVo8yIuvcVdKDphq13d4P0Hf/EdeB4Reg2FKmHdRZwzCXDRqND/0EhC9OftEi53d/K2MPVK4JwH7Z8YrRyZtV+jraEXpaePzO6jDpDyNoLxaN0uAv6al9QY/6UVdmHHlaKtV4A12tQIDAQAB\n-----END PUBLIC KEY-----\n")
 
 func reportsHandler(w http.ResponseWriter, r *http.Request) {
+	initRSAPublicKey()
+
 	authHeader := r.Header.Get("Authorization")
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
-	pubKey, err := jwt.ParseRSAPublicKeyFromPEM(publicKey)
+	var pubKey, err = jwt.ParseRSAPublicKeyFromPEM(publicKey)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, "ERROR: "+err.Error())
+		fmt.Fprint(w, "ERROR: "+err.Error()+"- pk: "+realmPK)
 		return
 	}
 
@@ -51,10 +85,12 @@ func reportsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return pubKey, nil
 	})
+	/*
 
+	 */
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, "Unauthorized - err: "+err.Error())
+		fmt.Fprint(w, "Unauthorized - err: "+err.Error()+"- pk: "+realmPK)
 		return
 	}
 
